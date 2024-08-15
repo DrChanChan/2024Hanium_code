@@ -303,43 +303,28 @@ if __name__ == "__main__":
 
 ####################################
 import cv2
+import serial
 
-def draw_guidelines(frame):
-    height, width, _ = frame.shape
-
-    # 선 색상 설정
-    red = (0, 0, 255)
-    yellow = (0, 255, 255)
-    green = (0, 255, 0)
-
-    # 가로선 그릴 점 설정
-    horizontal_lines = [
-        [(int(width * 0.15), int(height * 0.85)), (int(width * 0.85), int(height * 0.85)), red],  # 빨간색
-        [(int(width * 0.25), int(height * 0.65)), (int(width * 0.75), int(height * 0.65)), yellow],  # 노란색
-        [(int(width * 0.35), int(height * 0.45)), (int(width * 0.65), int(height * 0.45)), green]  # 초록색
-    ]
-    
-    # 대각선 그릴 점 설정
-    diagonal_lines = [
-        [(int(width * 0.15), int(height * 0.85)), (int(width * 0.35), int(height * 0.45)), yellow],  # 노란색
-        [(int(width * 0.85), int(height * 0.85)), (int(width * 0.65), int(height * 0.45)), yellow],  # 노란색
-        [(int(width * 0.25), int(height * 0.65)), (int(width * 0.35), int(height * 0.45)), green],  # 초록색
-        [(int(width * 0.75), int(height * 0.65)), (int(width * 0.65), int(height * 0.45)), green],  # 초록색
-        [(0, int(height * 0.85 + (int(height * 0.85) - int(height * 0.65)))), (int(width * 0.15), int(height * 0.85)), red],  # 빨간색 왼쪽 끝
-        [(width, int(height * 0.85 + (int(height * 0.85) - int(height * 0.65)))), (int(width * 0.85), int(height * 0.85)), red]  # 빨간색 오른쪽 끝
-    ]
-
-    # 가로선 그리기
-    for line in horizontal_lines:
-        cv2.line(frame, line[0], line[1], line[2], 10)
-
-    # 대각선 그리기
-    for line in diagonal_lines:
-        cv2.line(frame, line[0], line[1], line[2], 10)
-
-    return frame
 def main():
+
+    ############### PARAM ##############
     cap = cv2.VideoCapture(0)
+    ser = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
+
+    circles = [
+        {"center": (180, 550), "radius": 20}, 
+        {"center": (130, 550), "radius": 20},
+        {"center": (80, 550), "radius": 20},
+        {"center": (30, 550), "radius": 20},
+    ]
+
+    one_circle = 120
+    two_circle = 90
+    three_circle = 75
+    four_circle = 50
+
+    flip = False
+    ####################################
 
     if not cap.isOpened():
         print("Error: Could not open video stream.")
@@ -350,6 +335,7 @@ def main():
     if not ret or frame is None:
         print("Error: Could not read frame.")
         return
+    
     frame_height, frame_width, _ = frame.shape
 
     # Set the desired window size
@@ -366,28 +352,58 @@ def main():
     cv2.namedWindow('Rear Camera with Guidelines', cv2.WINDOW_NORMAL)
     cv2.resizeWindow('Rear Camera with Guidelines', display_width, display_height)
     cv2.setWindowProperty('Rear Camera with Guidelines', cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-
+    distance = 0.0
+    # Start capturing video and display it
     while True:
         ret, frame = cap.read()
+
+        if ser.in_waiting > 0:
+            distance = ser.readline().decode('utf-8', errors='replace').rstrip()
+            distance = int(float(distance))
+
         if not ret or frame is None:
             print("Error: Could not read frame.")
             break
-        
+
+        if flip == True:
+            frame = cv2.flip(frame, 0)
+
         # Resize the frame to fit within the window size
         frame_resized = cv2.resize(frame, (display_width, display_height))
 
-        # Draw guidelines on the resized frame
-        frame_with_guidelines = draw_guidelines(frame_resized)
+        cv2.putText(frame_resized, str(distance), (300,450), cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 1)
+        print(distance)
+
+        if distance is not None:
+            fill_count = 0
+
+            if distance < four_circle:
+                fill_count = 4
+            elif distance < three_circle:
+                fill_count = 3
+            elif distance < two_circle:
+                fill_count = 2
+            elif distance < one_circle:
+                fill_count = 1
+
+        
+        for i, circle in enumerate(circles):
+            if i < fill_count:
+                cv2.circle(frame_resized, circle["center"], circle["radius"], (0,0,255), -1)
+            else:
+                cv2.circle(frame_resized, circle["center"], circle["radius"], (0,0,255), 2)
 
         # Display the frame with guidelines
-        cv2.imshow('Rear Camera with Guidelines', frame_with_guidelines)
+        cv2.imshow('Rear Camera with Guidelines', frame_resized)
 
         # 'q' key to quit
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+    ser.close()
     cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
     main()
+
